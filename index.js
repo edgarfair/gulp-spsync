@@ -104,7 +104,14 @@ module.exports = function(args){
 				}	
 				throw "ACS endpoint not found"
 			});
-	}
+    }
+    var getRealm = new Promise(function (resolve, reject) {
+        if (options.realm.trimStart().length > 0) {
+            resolve(options.realm);
+        } else {
+            reject(Error("Realm was not passed in"));
+        }
+    });
 	var getRealmFromTargetUrl = function(targetUrl){
 		if(options.verbose){
 			gutil.log('Locating realm for ' + targetUrl)	
@@ -458,18 +465,36 @@ module.exports = function(args){
 		gutil.log('Uploading ' + file.relative)
 				
 		if(tokens == null || now() > toDateFromEpoch(tokens.expires_on) ){
-			getRealmFromTargetUrl(options.site).then(function(realm){
-				return getAppOnlyAccessToken(
-					sharePointPrincipal,
-					u.parse(options.site).hostname,
-					realm)
-					.then(function(token){
-						tokens = token
-						return uploadFile(file, content).then(fileDone)
-					})
-			}).catch(function(err){
-				cb(new gutil.PluginError("gulp-spsync", err)); 
-			});	
+            getRealm
+            .then(function(realm) {
+              return getAppOnlyAccessToken(
+                sharePointPrincipal,
+                u.parse(options.site).hostname,
+                realm
+              )
+                .then(function(token) {
+                  tokens = token;
+                  return uploadFile(file, content).then(fileDone);
+                })
+                
+            })
+            .catch(function(err) {
+              getRealmFromTargetUrl()
+                .then(function(realm) {
+                  return getAppOnlyAccessToken(
+                    sharePointPrincipal,
+                    u.parse(options.site).hostname,
+                    realm
+                  )
+                    .then(function(token) {
+                      tokens = token;
+                      return uploadFile(file, content).then(fileDone);
+                    })
+                })
+                .catch(function(err) {
+                  cb(new gutil.PluginError("gulp-spsync", err));
+                });
+            });
 		} else {
 			return uploadFile(file, content).then(fileDone)
 		}
